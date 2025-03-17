@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: django
+  template:
+    metadata:
+      labels:
+        app: django
+    spec:
+      containers:
+        - name: django
+          image: ghcr.io/franmolina02/prueba-craftech/api-django:{{ .Values.django.image.tag }}
+          env:
+            - name: SQL_ENGINE
+              value: django.db.backends.postgresql
+            - name: SQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: django-secret
+                  key: SQL_DATABASE
+            - name: SQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: django-secret
+                  key: SQL_USER
+            - name: SQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: django-secret
+                  key: SQL_PASSWORD
+            - name: SQL_HOST
+              value: postgres
+            - name: SQL_PORT
+              value: 5432
+          ports:
+            - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: django
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+    - port: 8000
+  selector:
+    app: django

@@ -1,0 +1,24 @@
+FROM python:3.10-slim-bullseye as base
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    libpq-dev gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base as builder
+
+COPY requirements.txt ./
+
+RUN pip install --prefix=/install -r requirements.txt
+RUN pip install --prefix=/install gunicorn
+
+FROM base
+
+COPY --from=builder /install /usr/local
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "core.wsgi:application"]

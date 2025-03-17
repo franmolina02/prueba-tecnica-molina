@@ -1,0 +1,6 @@
+apiVersion: v2
+name: prueba-craftech
+description: Chart para desplegar React, Django y Postgres para prueba de Craftech
+
+version: 0.0.1
+appVersion: "1.0"

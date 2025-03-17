@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Servicio BD
+  db:
+    container_name: database
+    image: postgres:12.0-alpine
+    env_file: ./backend/.env.postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - backend
+
+  # Servicio de Django
+  api:
+    container_name: django_app
+    build:
+      context: ./backend
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    env_file:
+      - ./backend/.env
+    networks:
+      - backend
+      - webapp
+
+  # Servicio de React
+  frontend:
+    container_name: react_app
+    build:
+      context: ./frontend
+    volumes:
+      - ./frontend/src:/app/src
+    ports:
+      - "3000:3000"
+    networks:
+      - webapp
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:
+  webapp:

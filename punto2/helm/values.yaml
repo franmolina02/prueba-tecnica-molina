@@ -1,0 +1,11 @@
+namespace: craftech
+
+# Configuración de Django
+django:
+  image:
+    tag: 0.1.0
+
+# Configuración de React
+react:
+  image:
+    tag: 0.1.0

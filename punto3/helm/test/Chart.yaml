@@ -1,0 +1,8 @@
+apiVersion: v2
+name: craftech-nginx-chart
+description: Test para pt 3 prueba craftech 
+
+type: application
+
+version: 0.3.2
+appVersion: 0.1.0

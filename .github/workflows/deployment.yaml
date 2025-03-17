@@ -1,0 +1,188 @@
+name: Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "punto1/**"
+      - "punto2/**"
+      - "punto3/helm/test/Chart.yaml"
+
+env:
+  REGISTRY: ghcr.io
+  REPO_NAME: prueba-tecnica-molina
+  IMAGE_NAME: craftech-nginx
+  CHART_NAME: craftech-nginx-chart
+  RELEASE_NAME: nginx
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.ACTION_TOKEN }}
+
+      - name: Conventional Changelog Action
+        id: changelog
+        uses: TriPSs/conventional-changelog-action@v5
+        with:
+          github-token: ${{ secrets.ACTION_TOKEN }}
+          git-branch: "main"
+          output-file: "false"
+          tag-prefix: ""
+          version-file: "./punto3/helm/test/Chart.yaml"
+          version-path: "version"
+          skip-ci: "false"
+
+      - name: Save changelog outputs to file
+        run: |
+          echo "export tag=${{ steps.changelog.outputs.tag }}" > changelog_outputs.txt
+
+      - name: Upload changelog outputs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog-outputs-nodeback
+          path: changelog_outputs.txt
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        if: ${{ steps.changelog.outputs.skipped == 'false' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACTION_TOKEN }}
+        with:
+          tag_name: ${{ steps.changelog.outputs.tag }}
+          release_name: ${{ steps.changelog.outputs.tag }}
+          body: ${{ steps.changelog.outputs.clean_changelog }}
+
+  update-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: read
+      packages: write
+      id-token: write
+    needs: create-release
+
+    steps:
+      - name: Download changelog outputs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog-outputs-nodeback
+
+      - name: Source Environment File
+        id: read-changelog
+        run: |
+          source ./changelog_outputs.txt
+          echo "tag=$tag" >> $GITHUB_ENV
+
+      - name: Checkout release code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.tag }}
+          token: ${{ secrets.ACTION_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./punto3/
+          file: ./punto3/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/franmolina02/${{ env.IMAGE_NAME }}:${{ env.tag }}
+
+  update-helm-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: read
+      packages: write
+      id-token: write
+    needs: create-release
+
+    steps:
+      - name: Download changelog outputs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog-outputs-nodeback
+
+      - name: Source Environment File
+        id: read-changelog
+        run: |
+          source ./changelog_outputs.txt
+          echo "tag=$tag" >> $GITHUB_ENV
+
+      - name: Checkout release code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.tag }}
+          token: ${{ secrets.ACTION_TOKEN }}
+
+      - name: Modify YAML
+        run: |
+          sudo snap install yq
+
+          YAML_FILE=./punto3/helm/test/values.yaml
+          KEY_TO_MODIFY=image.tag
+          NEW_VALUE=${{ env.tag }}
+
+          # Use yq to modify the YAML
+          yq eval ".${KEY_TO_MODIFY} = \"${NEW_VALUE}\"" -i "$YAML_FILE"
+
+          echo ".${KEY_TO_MODIFY} = \"${NEW_VALUE}\"" -i "$YAML_FILE"
+
+      - name: Autenticación con GHCR
+        run: echo "${{ secrets.ACTION_TOKEN }}" | helm registry login ghcr.io -u franmolina02 --password-stdin
+
+      - name: Empaquetar el Chart
+        run: helm package ./punto3/helm/test
+
+      - name: Subir el Chart a GHCR
+        run: helm push ./${{ env.CHART_NAME }}-${{ env.tag }}.tgz oci://ghcr.io/franmolina02
+
+  reload-services:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: read
+      packages: write
+      id-token: write
+    needs:
+      - update-image
+      - update-helm-chart
+
+    steps:
+      - name: SSH connection
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: 89.117.33.185
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            helm upgrade ${{ env.RELEASE_NAME }} oci://ghcr.io/franmolina02/${{ env.CHART_NAME }} -n craftech
+            echo "Actualizado!!"

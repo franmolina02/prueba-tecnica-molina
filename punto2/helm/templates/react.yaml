@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: react
+  template:
+    metadata:
+      labels:
+        app: react
+    spec:
+      containers:
+        - name: react
+          image: ghcr.io/franmolina02/prueba-craftech/react-app:{{ .Values.react.image.tag }}
+          ports:
+            - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: react
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+    - port: 3000
+  selector:
+    app: react
